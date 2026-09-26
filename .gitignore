@@ -1,0 +1,33 @@
+# Compiled executable
+server
+
+# Object files
+*.o
+
+# Other compiled output
+*.out
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*~
+
+# Debug files
+core
+core.*
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Generated test files
+client*.txt
+test.txt
+deepak.txt
