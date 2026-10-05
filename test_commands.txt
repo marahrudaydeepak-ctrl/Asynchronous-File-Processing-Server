@@ -1,0 +1,22 @@
+Terminal 1
+----------
+sudo apt update
+sudo apt install build-essential liburing-dev python3
+make
+./server
+
+Terminal 2
+----------
+./client
+
+Inside client
+-------------
+WRITE hello.txt Hello World
+READ hello.txt
+STATS
+QUIT
+
+Concurrent test
+---------------
+python3 load_test.py 10 10
+python3 load_test.py 50 20

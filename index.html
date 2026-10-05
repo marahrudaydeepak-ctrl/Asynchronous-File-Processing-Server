@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Async File Server Console</title>
+<style>
+:root{--bg:#eceff2;--panel:#fff;--ink:#1a2530;--mute:#66768a;--line:#d5dce4;--teal:#0f6e74;--teal-d:#0a4f54;--amber:#c47d12;--red:#b3372f;--green:#2a7d4f;
+--sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+@media(prefers-color-scheme:dark){:root{--bg:#141b22;--panel:#1c252e;--ink:#e4eaf0;--mute:#8d9cad;--line:#2f3b47;--teal:#3fb8c0;--teal-d:#2a979f;--amber:#e3a13a;--red:#e8746c;--green:#58c08a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+.wrap{max-width:1120px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{font-size:22px;margin:0;font-weight:650;letter-spacing:-.01em}
+h2{font-size:15px;margin:0 0 10px;font-weight:650}
+.conn{font-size:13px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}
+.dot.up{background:var(--green)}.dot.down{background:var(--red)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px}
+.grid{display:grid;gap:14px}
+.stats{grid-template-columns:repeat(4,1fr)}
+.stat .v{font-size:28px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .l{font-size:13px;color:var(--mute)}
+.two{grid-template-columns:260px 1fr;margin-top:14px}
+.pipe{display:flex;align-items:center;gap:0;margin:2px 0 14px;overflow-x:auto;padding-bottom:4px}
+.stage{flex:1;min-width:92px;text-align:center;font-size:12px;padding:8px 6px;border:1.5px solid var(--line);border-radius:6px;color:var(--mute);transition:all .18s}
+.stage.on{border-color:var(--amber);color:var(--ink);background:color-mix(in srgb,var(--amber) 16%,transparent)}
+.stage.done{border-color:var(--teal);color:var(--ink)}
+.stage.fail{border-color:var(--red);color:var(--red)}
+.arrow{width:16px;height:2px;background:var(--line);flex:none}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,textarea{width:100%;font:14px var(--mono);padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+textarea{min-height:84px;resize:vertical}
+input:focus,textarea:focus,button:focus-visible,.file:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+button{font:600 14px var(--sans);padding:9px 16px;border-radius:6px;border:1px solid var(--teal);background:var(--teal);color:#fff;cursor:pointer}
+button:hover{background:var(--teal-d)}
+button.ghost{background:transparent;color:var(--teal)}
+button.ghost:hover{background:color-mix(in srgb,var(--teal) 10%,transparent)}
+button:disabled{opacity:.5;cursor:wait}
+.files{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto}
+.file{display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:5px;cursor:pointer;font:13px var(--mono)}
+.file:hover{background:var(--bg)}
+.file span:last-child{color:var(--mute);flex:none}
+.empty{color:var(--mute);font-size:13px;padding:6px 2px}
+.out{margin-top:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:10px 12px;font:13px var(--mono);white-space:pre-wrap;word-break:break-word;min-height:44px}
+.out.err{color:var(--red);border-color:var(--red)}
+.meta{font-size:12px;color:var(--mute);margin-top:6px}
+.load{grid-template-columns:1fr 1fr;margin-top:14px}
+.lf{display:flex;gap:10px}.lf>div{flex:1}
+.res{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:12px;font-size:13px}
+.res b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:600;color:var(--mute);padding:4px 6px;border-bottom:1px solid var(--line)}
+td{padding:5px 6px;border-bottom:1px solid var(--line);font-family:var(--mono);white-space:nowrap}
+.tw{max-height:300px;overflow:auto}
+.ok{color:var(--green)}.bad{color:var(--red)}
+svg.spark{width:100%;height:40px;margin-top:6px}
+@media(max-width:800px){.stats{grid-template-columns:1fr 1fr}.two,.load{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.stage{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Async File Server Console</h1>
+  <div class="conn"><span class="dot" id="dot"></span><span id="connTxt">Checking server…</span></div>
+</header>
+
+<section class="grid stats" aria-label="Server statistics">
+  <div class="panel stat"><div class="v" id="sDone">–</div><div class="l">Completed requests</div></div>
+  <div class="panel stat"><div class="v" id="sFail">–</div><div class="l">Failed requests</div></div>
+  <div class="panel stat"><div class="v" id="sAvg">–</div><div class="l">Average latency (µs)</div></div>
+  <div class="panel stat"><div class="v" id="sRate">–</div><div class="l">Success rate</div>
+    <svg class="spark" id="spark" viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Stored files</h2>
+    <ul class="files" id="files"></ul>
+    <div class="row"><button class="ghost" id="refresh">Refresh list</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>Write or read a file</h2>
+    <div class="pipe" id="pipe" aria-label="Request path">
+      <div class="stage" data-s="0">Client handler</div><div class="arrow"></div>
+      <div class="stage" data-s="1">Request queue</div><div class="arrow"></div>
+      <div class="stage" data-s="2">io_uring</div><div class="arrow"></div>
+      <div class="stage" data-s="3">Completion queue</div><div class="arrow"></div>
+      <div class="stage" data-s="4">Reply</div>
+    </div>
+    <label for="fname">File name</label>
+    <input id="fname" value="hello.txt" autocomplete="off" spellcheck="false">
+    <label for="fdata">Content (one line)</label>
+    <textarea id="fdata" spellcheck="false">Hello from the web console</textarea>
+    <label for="newname">New file name (for rename)</label>
+    <input id="newname" value="renamed.txt" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button id="write">Write file</button>
+      <button class="ghost" id="read">Read file</button>
+      <button class="ghost" id="append">Append</button>
+      <button class="ghost" id="rename">Rename</button>
+      <button class="ghost" id="delete">Delete</button>
+    </div>
+    <div class="out" id="out">Results appear here.</div>
+    <div class="meta" id="meta"></div>
+  </div>
+</section>
+
+<section class="grid load">
+  <div class="panel">
+    <h2>Load test</h2>
+    <div class="lf">
+      <div><label for="lc">Concurrent clients</label><input id="lc" type="number" min="1" max="200" value="10"></div>
+      <div><label for="lr">Write+read pairs per client</label><input id="lr" type="number" min="1" max="200" value="10"></div>
+    </div>
+    <div class="row"><button id="run">Run load test</button><span class="meta" id="loadMsg"></span></div>
+    <div class="res" id="res"></div>
+  </div>
+  <div class="panel">
+    <h2>Activity</h2>
+    <div class="tw"><table>
+      <thead><tr><th>Time</th><th>Op</th><th>File</th><th>Server µs</th><th>Round trip ms</th><th></th></tr></thead>
+      <tbody id="log"></tbody>
+    </table></div>
+  </div>
+</section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const hist = [];
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+
+/* pipeline: lights the stages while a request is in flight, then settles on the result */
+const stages = [...document.querySelectorAll(".stage")];
+let pipeTimer;
+function pipeRun() {
+  clearInterval(pipeTimer);
+  stages.forEach(s => s.className = "stage");
+  let i = 0; stages[0].classList.add("on");
+  pipeTimer = setInterval(() => {
+    stages[i].className = "stage done";
+    i = Math.min(i + 1, stages.length - 1);
+    stages[i].classList.add("on");
+  }, 140);
+}
+function pipeEnd(ok) {
+  clearInterval(pipeTimer);
+  stages.forEach(s => s.className = "stage " + (ok ? "done" : ""));
+  if (!ok) stages[2].className = "stage fail";
+}
+
+function addLog(op, file, r, ok) {
+  const tr = document.createElement("tr");
+  const t = new Date().toLocaleTimeString();
+  [t, op, file, r.latency_us ?? "–", r.rtt_ms ?? "–"].forEach(v => {
+    const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+  });
+  const s = document.createElement("td"); s.textContent = ok ? "ok" : "failed"; s.className = ok ? "ok" : "bad"; tr.appendChild(s);
+  $("log").prepend(tr);
+  while ($("log").children.length > 40) $("log").lastChild.remove();
+}
+
+function show(text, isErr, meta) {
+  $("out").textContent = text;
+  $("out").className = "out" + (isErr ? " err" : "");
+  $("meta").textContent = meta || "";
+}
+
+async function doOp(kind) {
+  const file = $("fname").value.trim();
+  const newFile = $("newname").value.trim();
+  const btns = [$("write"), $("read"), $("append"), $("rename"), $("delete")];
+  btns.forEach(b => b.disabled = true);
+  pipeRun();
+  const routes = {
+    write: ["/api/write", {file, data: $("fdata").value}],
+    read: ["/api/read", {file}],
+    append: ["/api/append", {file, data: $("fdata").value}],
+    delete: ["/api/delete", {file}],
+    rename: ["/api/rename", {file, new_file: newFile}]
+  };
+  try {
+    if (!file) throw new Error("Enter a file name.");
+    if (kind === "delete" && !confirm(`Delete ${file}? This cannot be undone.`)) {
+      pipeEnd(false); show("Delete cancelled.", false); return;
+    }
+    if (kind === "rename" && !newFile) throw new Error("Enter the new file name.");
+    const [route, payload] = routes[kind];
+    const r = await api(route, payload);
+    pipeEnd(r.ok);
+    addLog(kind.toUpperCase(), kind === "rename" ? `${file} → ${newFile}` : file, r, r.ok);
+    if (!r.ok) show(r.raw || r.error || "Operation failed", true);
+    else if (kind === "read") {
+      $("fdata").value = r.data;
+      show(r.data || "(empty file)", false, `${r.bytes} bytes · server latency ${r.latency_us} µs · request #${r.request}`);
+    } else if (kind === "write") {
+      show(`Wrote ${r.bytes} bytes to ${file}`, false, `Server latency ${r.latency_us} µs · request #${r.request}`);
+    } else if (kind === "append") {
+      show(`Appended ${r.bytes} bytes to ${file}`, false, `Server latency ${r.latency_us} µs · request #${r.request}`);
+    } else if (kind === "delete") {
+      show(`Deleted ${file}`, false, `Server latency ${r.latency_us} µs · request #${r.request}`);
+    } else {
+      $("fname").value = newFile;
+      show(`Renamed ${file} to ${newFile}`, false, `Server latency ${r.latency_us} µs · request #${r.request}`);
+    }
+    await loadFiles(); loadStats();
+  } catch (e) {
+    pipeEnd(false); show(e.message, true); addLog(kind.toUpperCase(), file, {}, false);
+  } finally { btns.forEach(b => b.disabled = false); }
+}
+$("write").onclick = () => doOp("write");
+$("read").onclick = () => doOp("read");
+$("append").onclick = () => doOp("append");
+$("delete").onclick = () => doOp("delete");
+$("rename").onclick = () => doOp("rename");
+
+/* stats + connection */
+function spark() {
+  const svg = $("spark");
+  if (hist.length < 2) { svg.innerHTML = ""; return; }
+  const max = Math.max(...hist, 1);
+  const pts = hist.map((v, i) => `${(i / (hist.length - 1)) * 200},${38 - (v / max) * 34}`).join(" ");
+  svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="var(--teal)" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+}
+async function loadStats() {
+  try {
+    const s = await api("/api/stats");
+    const done = +s.completed, fail = +s.failed, avg = +s.avg_latency_us;
+    $("sDone").textContent = done.toLocaleString();
+    $("sFail").textContent = fail.toLocaleString();
+    $("sAvg").textContent = avg.toFixed(1);
+    $("sRate").textContent = (done + fail) ? (100 * done / (done + fail)).toFixed(1) + "%" : "–";
+    hist.push(avg); if (hist.length > 40) hist.shift(); spark();
+  } catch (e) { /* connection dot reports this */ }
+}
+async function ping() {
+  try {
+    const p = await api("/api/ping");
+    $("dot").className = "dot " + (p.up ? "up" : "down");
+    $("connTxt").textContent = p.up ? `Connected to ${p.target}` : `Server ${p.target} is not reachable. Start ./server`;
+  } catch (e) {
+    $("dot").className = "dot down"; $("connTxt").textContent = "Gateway not reachable";
+  }
+}
+
+/* files */
+const fmt = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
+async function loadFiles() {
+  try {
+    const d = await api("/api/files");
+    const ul = $("files"); ul.innerHTML = "";
+    if (!d.files.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = d.dir_found ? "No files yet. Write one to get started." : "Storage folder not found. Start the gateway from the project folder or pass --storage.";
+      ul.appendChild(li); return;
+    }
+    d.files.forEach(f => {
+      const li = document.createElement("li"); li.className = "file"; li.tabIndex = 0;
+      const a = document.createElement("span"); a.textContent = f.name;
+      const b = document.createElement("span"); b.textContent = fmt(f.size);
+      li.append(a, b);
+      const open = () => { $("fname").value = f.name; doOp("read"); };
+      li.onclick = open; li.onkeydown = e => { if (e.key === "Enter") open(); };
+      ul.appendChild(li);
+    });
+  } catch (e) {}
+}
+$("refresh").onclick = loadFiles;
+
+/* load test */
+$("run").onclick = async () => {
+  const c = +$("lc").value, r = +$("lr").value;
+  $("run").disabled = true; $("loadMsg").textContent = `Running ${c * r * 2} operations…`; $("res").innerHTML = "";
+  try {
+    const d = await api("/api/load", {clients: c, requests: r});
+    const cell = (l, v) => `<div>${l}<b>${v}</b></div>`;
+    $("res").innerHTML = cell("Throughput", d.throughput.toLocaleString() + " ops/s") + cell("Wall time", d.wall_s + " s")
+      + cell("Operations", d.operations.toLocaleString()) + cell("Avg client time", d.avg_client_s + " s")
+      + cell("Avg server latency", d.avg_server_latency_us + " µs") + cell("Errors", d.errors);
+    $("loadMsg").textContent = "Done.";
+    loadStats(); loadFiles();
+  } catch (e) { $("loadMsg").textContent = e.message; }
+  finally { $("run").disabled = false; }
+};
+
+ping(); loadStats(); loadFiles();
+setInterval(ping, 5000); setInterval(loadStats, 2000);
+</script>
+</body>
+</html>
